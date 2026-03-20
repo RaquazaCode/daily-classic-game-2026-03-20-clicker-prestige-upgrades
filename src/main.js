@@ -1,8 +1,9 @@
 import {
+  FIXED_DT_MS,
   advanceByMs,
   createGame,
-  resetToTitle,
-  setNearMatchScenario,
+  hardResetToTitle,
+  setScenarioForTesting,
   snapshot,
   startGame,
   stepGame,
@@ -13,140 +14,152 @@ import {
 const canvas = document.querySelector("#game");
 const ctx = canvas.getContext("2d");
 
-const CELL = 52;
-const BOARD_X = 40;
-const BOARD_Y = 70;
+const CLICKER = { x: 120, y: 180, w: 360, h: 220 };
+const BTN_CURSOR = { x: 560, y: 200, w: 320, h: 80 };
+const BTN_FACTORY = { x: 560, y: 300, w: 320, h: 80 };
+const BTN_PRESTIGE = { x: 560, y: 400, w: 320, h: 80 };
 
-const palette = ["#ff6b6b", "#ffd166", "#4ecdc4", "#5f7cff", "#b084f5", "#7fd957"];
-
-const state = createGame(20260319);
+const state = createGame(20260320);
 const input = {
-  leftPressed: false,
-  rightPressed: false,
-  upPressed: false,
-  downPressed: false,
-  selectPressed: false,
+  clickPressed: false,
+  buyCursorPressed: false,
+  buyFactoryPressed: false,
+  prestigePressed: false,
 };
+
+function inRect(pointX, pointY, rect) {
+  return (
+    pointX >= rect.x &&
+    pointX <= rect.x + rect.w &&
+    pointY >= rect.y &&
+    pointY <= rect.y + rect.h
+  );
+}
+
+function pulse(action) {
+  input[action] = true;
+}
+
+function resetInput() {
+  input.clickPressed = false;
+  input.buyCursorPressed = false;
+  input.buyFactoryPressed = false;
+  input.prestigePressed = false;
+}
 
 function drawBackground() {
   const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  gradient.addColorStop(0, "#0f1230");
-  gradient.addColorStop(1, "#1a2f5a");
+  gradient.addColorStop(0, "#1b1029");
+  gradient.addColorStop(1, "#0f223a");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = "rgba(255,255,255,0.06)";
-  for (let i = 0; i < 20; i += 1) {
-    const x = (i * 87 + (state.elapsedMs / 28) % canvas.width) % canvas.width;
-    const y = (i * 39 + (state.elapsedMs / 40) % canvas.height) % canvas.height;
-    ctx.beginPath();
-    ctx.arc(x, y, 2 + (i % 3), 0, Math.PI * 2);
-    ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  for (let i = 0; i < 18; i += 1) {
+    const x = (i * 81 + (state.elapsedMs / 20) % canvas.width) % canvas.width;
+    const y = (i * 53 + (state.elapsedMs / 33) % canvas.height) % canvas.height;
+    ctx.fillRect(x, y, 3, 3);
   }
 }
 
-function drawBoardPanel() {
-  ctx.fillStyle = "rgba(5, 8, 20, 0.72)";
-  ctx.fillRect(24, 52, 440, 440);
+function drawPanel(rect, color = "rgba(7,9,20,0.72)") {
+  ctx.fillStyle = color;
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
   ctx.strokeStyle = "rgba(255,255,255,0.24)";
   ctx.lineWidth = 2;
-  ctx.strokeRect(24, 52, 440, 440);
+  ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 }
 
-function drawGems() {
-  for (let row = 0; row < state.board.length; row += 1) {
-    for (let col = 0; col < state.board[row].length; col += 1) {
-      const gem = state.board[row][col];
-      const x = BOARD_X + col * CELL;
-      const y = BOARD_Y + row * CELL;
+function drawMainBoard() {
+  drawPanel({ x: 52, y: 80, w: 440, h: 440 });
 
-      ctx.fillStyle = palette[gem];
-      ctx.fillRect(x + 4, y + 4, CELL - 8, CELL - 8);
-      ctx.strokeStyle = "rgba(255,255,255,0.35)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x + 4, y + 4, CELL - 8, CELL - 8);
-    }
-  }
-}
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "700 42px 'Trebuchet MS', sans-serif";
+  ctx.fillText("Clicker Core", 106, 142);
 
-function drawCursor() {
-  const x = BOARD_X + state.cursor.col * CELL;
-  const y = BOARD_Y + state.cursor.row * CELL;
-
-  ctx.strokeStyle = "#ffffff";
+  const orbGradient = ctx.createRadialGradient(300, 290, 24, 300, 290, 170);
+  orbGradient.addColorStop(0, "#ffd166");
+  orbGradient.addColorStop(1, "#ef476f");
+  ctx.fillStyle = orbGradient;
+  ctx.fillRect(CLICKER.x, CLICKER.y, CLICKER.w, CLICKER.h);
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
   ctx.lineWidth = 3;
-  ctx.strokeRect(x + 2, y + 2, CELL - 4, CELL - 4);
+  ctx.strokeRect(CLICKER.x, CLICKER.y, CLICKER.w, CLICKER.h);
 
-  if (state.cursor.selected) {
-    const selX = BOARD_X + state.cursor.selected.col * CELL;
-    const selY = BOARD_Y + state.cursor.selected.row * CELL;
-    ctx.strokeStyle = "#ffd166";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(selX + 1, selY + 1, CELL - 2, CELL - 2);
-  }
+  ctx.fillStyle = "#fff8e8";
+  ctx.font = "700 28px 'Trebuchet MS', sans-serif";
+  ctx.fillText("CLICK ZONE", CLICKER.x + 92, CLICKER.y + 120);
+
+  ctx.font = "600 20px 'Trebuchet MS', sans-serif";
+  ctx.fillText(`Coins: ${state.coins.toFixed(1)}`, 100, 460);
+  ctx.fillText(`Total earned: ${state.totalCoinsEarned.toFixed(1)}`, 100, 492);
+}
+
+function drawUpgradeButton(rect, title, body) {
+  drawPanel(rect, "rgba(18,26,44,0.78)");
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "700 24px 'Trebuchet MS', sans-serif";
+  ctx.fillText(title, rect.x + 20, rect.y + 34);
+  ctx.font = "500 18px 'Trebuchet MS', sans-serif";
+  ctx.fillText(body, rect.x + 20, rect.y + 63);
 }
 
 function drawHud() {
-  ctx.fillStyle = "rgba(5, 8, 20, 0.72)";
-  ctx.fillRect(490, 52, 446, 440);
+  drawPanel({ x: 524, y: 80, w: 372, h: 440 });
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = "700 30px 'Trebuchet MS', sans-serif";
-  ctx.fillText("Match-3", 520, 102);
-  ctx.font = "700 22px 'Trebuchet MS', sans-serif";
-  ctx.fillText("Timed Levels", 520, 134);
+  ctx.font = "700 32px 'Trebuchet MS', sans-serif";
+  ctx.fillText("Prestige Idle", 550, 132);
 
-  ctx.font = "600 22px 'Trebuchet MS', sans-serif";
-  ctx.fillText(`Score: ${state.score}`, 520, 188);
-  ctx.fillText(`Level: ${state.level}`, 520, 222);
-  ctx.fillText(`Moves: ${state.moves}`, 520, 256);
+  ctx.font = "600 20px 'Trebuchet MS', sans-serif";
+  ctx.fillText(`Click Power: ${state.clickPower.toFixed(1)}`, 550, 170);
+  ctx.fillText(`Idle / sec: ${state.autoRatePerSecond.toFixed(1)}`, 550, 194);
 
-  const secondsLeft = (state.levelTimeLeftMs / 1000).toFixed(1);
-  ctx.fillText(`Time: ${secondsLeft}s`, 520, 290);
-  ctx.fillText(`Target: ${state.levelTargetScore}`, 520, 324);
+  drawUpgradeButton(
+    BTN_CURSOR,
+    `Cursor Lv${state.cursorLevel} - ${state.cursorCost}c`,
+    "C key: +1 click power",
+  );
+  drawUpgradeButton(
+    BTN_FACTORY,
+    `Factory Lv${state.factoryLevel} - ${state.factoryCost}c`,
+    "F key: +0.6 idle / sec",
+  );
+  drawUpgradeButton(
+    BTN_PRESTIGE,
+    "Prestige (K key)",
+    `Shards: ${state.prestigeShards}  Mult: x${state.prestigeMultiplier.toFixed(1)}`,
+  );
 
-  ctx.fillStyle = "#d6deff";
-  ctx.font = "500 18px 'Trebuchet MS', sans-serif";
-  ctx.fillText(state.lastEvent, 520, 364);
-
-  ctx.fillStyle = "#f6f8ff";
+  ctx.fillStyle = "#dce9ff";
   ctx.font = "500 17px 'Trebuchet MS', sans-serif";
-  ctx.fillText("Arrows move cursor", 520, 412);
-  ctx.fillText("Space/Enter select & swap", 520, 438);
-  ctx.fillText("P pause | R reset", 520, 464);
+  ctx.fillText("Enter start/restart", 550, 548);
+  ctx.fillText("P pause | R hard reset", 550, 572);
+  ctx.fillText(state.lastEvent, 550, 598);
 }
 
 function drawOverlay() {
   if (state.mode === "playing") return;
 
-  ctx.fillStyle = "rgba(3, 4, 12, 0.65)";
+  ctx.fillStyle = "rgba(6,7,18,0.64)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.textAlign = "center";
   ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
 
   if (state.mode === "title") {
-    ctx.font = "700 64px 'Trebuchet MS', sans-serif";
-    ctx.fillText("Match-3", canvas.width / 2, 210);
-    ctx.font = "700 34px 'Trebuchet MS', sans-serif";
-    ctx.fillText("Timed Levels", canvas.width / 2, 258);
+    ctx.font = "700 58px 'Trebuchet MS', sans-serif";
+    ctx.fillText("Clicker / Idle", canvas.width / 2, 240);
+    ctx.font = "600 32px 'Trebuchet MS', sans-serif";
+    ctx.fillText("Prestige Upgrades", canvas.width / 2, 290);
     ctx.font = "500 24px 'Trebuchet MS', sans-serif";
-    ctx.fillText("Enter to start", canvas.width / 2, 322);
-    ctx.fillText("Reach target score before each timer expires", canvas.width / 2, 358);
+    ctx.fillText("Enter to start", canvas.width / 2, 350);
   }
 
   if (state.mode === "paused") {
     ctx.font = "700 64px 'Trebuchet MS', sans-serif";
-    ctx.fillText("Paused", canvas.width / 2, 240);
+    ctx.fillText("Paused", canvas.width / 2, 270);
     ctx.font = "500 24px 'Trebuchet MS', sans-serif";
-    ctx.fillText("Press P to continue", canvas.width / 2, 296);
-  }
-
-  if (state.mode === "gameover") {
-    ctx.font = "700 64px 'Trebuchet MS', sans-serif";
-    ctx.fillText("Time Up", canvas.width / 2, 230);
-    ctx.font = "500 24px 'Trebuchet MS', sans-serif";
-    ctx.fillText(`Final score: ${state.score}`, canvas.width / 2, 286);
-    ctx.fillText("Enter to retry | R to reset", canvas.width / 2, 322);
+    ctx.fillText("Press P to continue", canvas.width / 2, 320);
   }
 
   ctx.textAlign = "start";
@@ -154,9 +167,7 @@ function drawOverlay() {
 
 function render() {
   drawBackground();
-  drawBoardPanel();
-  drawGems();
-  drawCursor();
+  drawMainBoard();
   drawHud();
   drawOverlay();
 }
@@ -166,18 +177,14 @@ let accumulator = 0;
 let raf = 0;
 
 function frame(now) {
-  const dt = Math.min(0.1, now - previous);
+  const dt = Math.min(100, now - previous);
   previous = now;
   accumulator += dt;
 
-  while (accumulator >= 100) {
+  while (accumulator >= FIXED_DT_MS) {
     stepGame(state, input);
-    input.leftPressed = false;
-    input.rightPressed = false;
-    input.upPressed = false;
-    input.downPressed = false;
-    input.selectPressed = false;
-    accumulator -= 100;
+    resetInput();
+    accumulator -= FIXED_DT_MS;
   }
 
   render();
@@ -186,69 +193,77 @@ function frame(now) {
 
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
-  if (key === "arrowleft") input.leftPressed = true;
-  if (key === "arrowright") input.rightPressed = true;
-  if (key === "arrowup") input.upPressed = true;
-  if (key === "arrowdown") input.downPressed = true;
-  if (key === " " || key === "spacebar" || key === "space") input.selectPressed = true;
 
   if (key === "enter") {
-    if (state.mode === "title" || state.mode === "gameover") {
+    if (state.mode === "title") {
       startGame(state);
-    } else {
-      input.selectPressed = true;
+      return;
     }
+    pulse("clickPressed");
   }
+
+  if (key === "c") pulse("buyCursorPressed");
+  if (key === "f") pulse("buyFactoryPressed");
+  if (key === "k") pulse("prestigePressed");
 
   if (key === "p") {
     togglePause(state);
   }
 
   if (key === "r") {
-    resetToTitle(state, 20260319);
+    hardResetToTitle(state, 20260320);
   }
 });
 
+canvas.addEventListener("click", (event) => {
+  if (state.mode !== "playing") return;
+  const bounds = canvas.getBoundingClientRect();
+  const x = ((event.clientX - bounds.left) / bounds.width) * canvas.width;
+  const y = ((event.clientY - bounds.top) / bounds.height) * canvas.height;
+
+  if (inRect(x, y, CLICKER)) pulse("clickPressed");
+  if (inRect(x, y, BTN_CURSOR)) pulse("buyCursorPressed");
+  if (inRect(x, y, BTN_FACTORY)) pulse("buyFactoryPressed");
+  if (inRect(x, y, BTN_PRESTIGE)) pulse("prestigePressed");
+});
+
 window.advanceTime = (ms) => {
-  advanceByMs(state, input, ms);
+  advanceByMs(state, { clickPressed: false, buyCursorPressed: false, buyFactoryPressed: false, prestigePressed: false }, ms);
   render();
 };
 
 window.render_game_to_text = () => {
-  const view = snapshot(state);
   return JSON.stringify({
-    ...view,
-    board_rows: toTextRows(state),
+    ...snapshot(state),
+    rows: toTextRows(state),
   });
 };
 
-window.__setupCascadeScenario = () => {
-  setNearMatchScenario(state);
-  state.mode = "playing";
-  state.score = 0;
-  state.level = 1;
-  state.levelTimeLeftMs = 30000;
-  state.levelTargetScore = 600;
-  state.cursor.selected = null;
-  state.lastEvent = "Cascade scenario ready";
-  render();
-};
+window.__runDeterministicVerification = () => {
+  startGame(state);
+  setScenarioForTesting(state, {
+    coins: 1600,
+    totalCoinsEarned: 1600,
+    clickPower: 4,
+    autoRatePerSecond: 1.2,
+    cursorLevel: 3,
+    factoryLevel: 2,
+    cursorCost: 128,
+    factoryCost: 310,
+  });
+  pulse("prestigePressed");
+  stepGame(state, input);
+  resetInput();
 
-window.__runCascadeSwap = () => {
-  const pulse = (key) => {
-    input[key] = true;
-    stepGame(state, input);
-    input.leftPressed = false;
-    input.rightPressed = false;
-    input.upPressed = false;
-    input.downPressed = false;
-    input.selectPressed = false;
-  };
+  pulse("clickPressed");
+  stepGame(state, input);
+  resetInput();
 
-  pulse("rightPressed");
-  pulse("selectPressed");
-  pulse("rightPressed");
-  pulse("selectPressed");
+  advanceByMs(
+    state,
+    { clickPressed: false, buyCursorPressed: false, buyFactoryPressed: false, prestigePressed: false },
+    3000,
+  );
   render();
   return snapshot(state);
 };

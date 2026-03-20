@@ -1,0 +1,10 @@
+{
+  "schema": "web_game_playwright_client",
+  "buttons": [
+    "k",
+    "enter"
+  ],
+  "mouse_x": 620,
+  "mouse_y": 436,
+  "frames": 8
+}

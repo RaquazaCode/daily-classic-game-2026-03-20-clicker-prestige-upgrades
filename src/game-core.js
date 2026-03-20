@@ -1,231 +1,47 @@
-const ROWS = 8;
-const COLS = 8;
-const GEM_TYPES = 6;
 const FIXED_DT_MS = 100;
-const LEVEL_DURATION_MS = 30000;
 
-function createRng(seed = 1) {
-  let value = seed >>> 0;
-  return () => {
-    value = (value + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(value ^ (value >>> 15), 1 | value);
-    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+function round3(value) {
+  return Math.round(value * 1000) / 1000;
 }
 
-function cloneBoard(board) {
-  return board.map((row) => [...row]);
+function makeRunState(state) {
+  state.coins = 0;
+  state.totalCoinsEarned = 0;
+  state.clickPower = 1;
+  state.autoRatePerSecond = 0;
+  state.cursorLevel = 0;
+  state.factoryLevel = 0;
+  state.cursorCost = 25;
+  state.factoryCost = 120;
+  state.elapsedMs = 0;
 }
 
-function inBounds(row, col) {
-  return row >= 0 && row < ROWS && col >= 0 && col < COLS;
-}
-
-function areAdjacent(a, b) {
-  const dr = Math.abs(a.row - b.row);
-  const dc = Math.abs(a.col - b.col);
-  return dr + dc === 1;
-}
-
-function swapCells(board, a, b) {
-  const temp = board[a.row][a.col];
-  board[a.row][a.col] = board[b.row][b.col];
-  board[b.row][b.col] = temp;
-}
-
-function findMatches(board) {
-  const marked = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
-  let count = 0;
-
-  for (let row = 0; row < ROWS; row += 1) {
-    let runStart = 0;
-    for (let col = 1; col <= COLS; col += 1) {
-      const same = col < COLS && board[row][col] === board[row][runStart];
-      if (same) continue;
-      const runLength = col - runStart;
-      if (runLength >= 3) {
-        for (let fill = runStart; fill < col; fill += 1) {
-          if (!marked[row][fill]) {
-            marked[row][fill] = true;
-            count += 1;
-          }
-        }
-      }
-      runStart = col;
-    }
-  }
-
-  for (let col = 0; col < COLS; col += 1) {
-    let runStart = 0;
-    for (let row = 1; row <= ROWS; row += 1) {
-      const same = row < ROWS && board[row][col] === board[runStart][col];
-      if (same) continue;
-      const runLength = row - runStart;
-      if (runLength >= 3) {
-        for (let fill = runStart; fill < row; fill += 1) {
-          if (!marked[fill][col]) {
-            marked[fill][col] = true;
-            count += 1;
-          }
-        }
-      }
-      runStart = row;
-    }
-  }
-
-  return { marked, count };
-}
-
-function collapseAndRefill(board, marked, rng) {
-  for (let col = 0; col < COLS; col += 1) {
-    const kept = [];
-    for (let row = ROWS - 1; row >= 0; row -= 1) {
-      if (!marked[row][col]) kept.push(board[row][col]);
-    }
-
-    let writeRow = ROWS - 1;
-    for (const gem of kept) {
-      board[writeRow][col] = gem;
-      writeRow -= 1;
-    }
-
-    while (writeRow >= 0) {
-      board[writeRow][col] = Math.floor(rng() * GEM_TYPES);
-      writeRow -= 1;
-    }
-  }
-}
-
-function boardHasInitialMatches(board) {
-  return findMatches(board).count > 0;
-}
-
-function generateCleanBoard(rng) {
-  let board = Array.from({ length: ROWS }, () =>
-    Array.from({ length: COLS }, () => Math.floor(rng() * GEM_TYPES)),
-  );
-
-  let guard = 0;
-  while (boardHasInitialMatches(board) && guard < 120) {
-    board = Array.from({ length: ROWS }, () =>
-      Array.from({ length: COLS }, () => Math.floor(rng() * GEM_TYPES)),
-    );
-    guard += 1;
-  }
-  return board;
-}
-
-function levelTarget(level) {
-  return 600 + (level - 1) * 450;
-}
-
-function clearSelection(state) {
-  state.cursor.selected = null;
-}
-
-function processBoard(state) {
-  let cascades = 0;
-  while (true) {
-    const { marked, count } = findMatches(state.board);
-    if (count === 0) break;
-    cascades += 1;
-    const combo = Math.max(1, cascades);
-    state.score += count * 60 * combo;
-    collapseAndRefill(state.board, marked, state.rng);
-    state.lastEvent = cascades > 1 ? `Cascade x${cascades}` : `Matched ${count} gems`;
-  }
-}
-
-function trySwapSelection(state, nextCell) {
-  const selected = state.cursor.selected;
-  if (!selected) {
-    state.cursor.selected = { row: nextCell.row, col: nextCell.col };
-    state.lastEvent = "Gem selected";
-    return;
-  }
-
-  if (!areAdjacent(selected, nextCell)) {
-    state.cursor.selected = { row: nextCell.row, col: nextCell.col };
-    state.lastEvent = "Selection moved";
-    return;
-  }
-
-  swapCells(state.board, selected, nextCell);
-  const firstPass = findMatches(state.board);
-  if (firstPass.count === 0) {
-    swapCells(state.board, selected, nextCell);
-    state.score = Math.max(0, state.score - 10);
-    state.lastEvent = "No match: swap reverted";
-    clearSelection(state);
-    return;
-  }
-
-  state.moves += 1;
-  processBoard(state);
-  clearSelection(state);
-}
-
-function handleInput(state, input) {
-  if (input.leftPressed) state.cursor.col = Math.max(0, state.cursor.col - 1);
-  if (input.rightPressed) state.cursor.col = Math.min(COLS - 1, state.cursor.col + 1);
-  if (input.upPressed) state.cursor.row = Math.max(0, state.cursor.row - 1);
-  if (input.downPressed) state.cursor.row = Math.min(ROWS - 1, state.cursor.row + 1);
-
-  if (input.selectPressed) {
-    trySwapSelection(state, { row: state.cursor.row, col: state.cursor.col });
-  }
-}
-
-function updateTimer(state) {
-  state.levelTimeLeftMs = Math.max(0, state.levelTimeLeftMs - FIXED_DT_MS);
-  if (state.levelTimeLeftMs > 0) return;
-
-  if (state.score >= state.levelTargetScore) {
-    state.level += 1;
-    state.levelTimeLeftMs = LEVEL_DURATION_MS;
-    state.levelTargetScore = levelTarget(state.level);
-    state.lastEvent = `Level ${state.level} started`;
-    return;
-  }
-
-  state.mode = "gameover";
-  state.lastEvent = "Time expired before target";
-}
-
-export function createGame(seed = 20260319) {
-  const rng = createRng(seed);
+export function createGame(seed = 20260320) {
   return {
     seed,
-    rng,
     mode: "title",
-    board: generateCleanBoard(rng),
-    level: 1,
-    levelTimeLeftMs: LEVEL_DURATION_MS,
-    levelTargetScore: levelTarget(1),
-    score: 0,
-    moves: 0,
+    coins: 0,
+    totalCoinsEarned: 0,
+    clickPower: 1,
+    autoRatePerSecond: 0,
+    cursorLevel: 0,
+    factoryLevel: 0,
+    cursorCost: 25,
+    factoryCost: 120,
+    prestigeShards: 0,
+    prestigeMultiplier: 1,
     elapsedMs: 0,
-    cursor: { row: 0, col: 0, selected: null },
     lastEvent: "Press Enter to start",
   };
 }
 
 export function startGame(state) {
-  state.rng = createRng(state.seed);
-  state.board = generateCleanBoard(state.rng);
+  makeRunState(state);
   state.mode = "playing";
-  state.level = 1;
-  state.levelTimeLeftMs = LEVEL_DURATION_MS;
-  state.levelTargetScore = levelTarget(1);
-  state.score = 0;
-  state.moves = 0;
-  state.elapsedMs = 0;
-  state.cursor = { row: 0, col: 0, selected: null };
-  state.lastEvent = "Level 1 started";
+  state.lastEvent = "Run started";
 }
 
-export function resetToTitle(state, seed = state.seed) {
+export function hardResetToTitle(state, seed = state.seed) {
   const fresh = createGame(seed);
   Object.assign(state, fresh);
 }
@@ -240,10 +56,79 @@ export function togglePause(state) {
   }
 }
 
+function addCoins(state, amount, reason) {
+  if (amount <= 0) return;
+  const nextCoins = round3(state.coins + amount);
+  const nextTotal = round3(state.totalCoinsEarned + amount);
+  state.coins = nextCoins;
+  state.totalCoinsEarned = nextTotal;
+  if (reason) state.lastEvent = reason;
+}
+
+function spendCoins(state, amount) {
+  if (state.coins < amount) return false;
+  state.coins = round3(state.coins - amount);
+  return true;
+}
+
+function performClick(state) {
+  const gain = round3(state.clickPower * state.prestigeMultiplier);
+  addCoins(state, gain, `Click +${gain.toFixed(1)}`);
+}
+
+function buyCursor(state) {
+  if (!spendCoins(state, state.cursorCost)) {
+    state.lastEvent = "Need more coins for Cursor";
+    return;
+  }
+  state.cursorLevel += 1;
+  state.clickPower += 1;
+  state.cursorCost = Math.ceil(state.cursorCost * 1.35 + 3);
+  state.lastEvent = `Cursor Lv${state.cursorLevel} bought`;
+}
+
+function buyFactory(state) {
+  if (!spendCoins(state, state.factoryCost)) {
+    state.lastEvent = "Need more coins for Factory";
+    return;
+  }
+  state.factoryLevel += 1;
+  state.autoRatePerSecond = round3(state.autoRatePerSecond + 0.6);
+  state.factoryCost = Math.ceil(state.factoryCost * 1.5 + 8);
+  state.lastEvent = `Factory Lv${state.factoryLevel} bought`;
+}
+
+function attemptPrestige(state) {
+  const shardsEarned = Math.floor(state.totalCoinsEarned / 1000);
+  if (shardsEarned < 1) {
+    state.lastEvent = "Need 1000 total coins for Prestige";
+    return false;
+  }
+
+  state.prestigeShards += shardsEarned;
+  state.prestigeMultiplier = round3(1 + state.prestigeShards * 0.2);
+  makeRunState(state);
+  state.mode = "playing";
+  state.lastEvent = `Prestiged +${shardsEarned} shards`;
+  return true;
+}
+
+function applyPassiveIncome(state) {
+  const gainPerTick = round3(
+    (state.autoRatePerSecond * state.prestigeMultiplier * FIXED_DT_MS) / 1000,
+  );
+  addCoins(state, gainPerTick, gainPerTick > 0 ? `Idle +${gainPerTick.toFixed(2)}` : null);
+}
+
 export function stepGame(state, input) {
   if (state.mode !== "playing") return;
-  handleInput(state, input);
-  updateTimer(state);
+
+  if (input.clickPressed) performClick(state);
+  if (input.buyCursorPressed) buyCursor(state);
+  if (input.buyFactoryPressed) buyFactory(state);
+  if (input.prestigePressed) attemptPrestige(state);
+
+  applyPassiveIncome(state);
   state.elapsedMs += FIXED_DT_MS;
 }
 
@@ -257,53 +142,45 @@ export function advanceByMs(state, input, ms) {
 export function snapshot(state) {
   return {
     mode: state.mode,
-    level: state.level,
-    score: state.score,
-    moves: state.moves,
-    levelTimeLeftMs: state.levelTimeLeftMs,
-    levelTargetScore: state.levelTargetScore,
-    cursor: {
-      row: state.cursor.row,
-      col: state.cursor.col,
-      selected: state.cursor.selected,
-    },
-    board: cloneBoard(state.board),
+    coins: state.coins,
+    totalCoinsEarned: state.totalCoinsEarned,
+    clickPower: state.clickPower,
+    autoRatePerSecond: state.autoRatePerSecond,
+    cursorLevel: state.cursorLevel,
+    factoryLevel: state.factoryLevel,
+    cursorCost: state.cursorCost,
+    factoryCost: state.factoryCost,
+    prestigeShards: state.prestigeShards,
+    prestigeMultiplier: state.prestigeMultiplier,
+    elapsedMs: state.elapsedMs,
     lastEvent: state.lastEvent,
   };
 }
 
-export function setBoardForTesting(state, board) {
-  if (!Array.isArray(board) || board.length !== ROWS) {
-    throw new Error("board must have 8 rows");
+export function setScenarioForTesting(state, scenario) {
+  if (typeof scenario !== "object" || !scenario) {
+    throw new Error("scenario must be an object");
   }
-  for (const row of board) {
-    if (!Array.isArray(row) || row.length !== COLS) {
-      throw new Error("board rows must have 8 cols");
+  for (const [key, value] of Object.entries(scenario)) {
+    if (key in state) {
+      state[key] = value;
     }
   }
-  state.board = cloneBoard(board);
-}
-
-export function setNearMatchScenario(state) {
-  const board = [
-    [4, 1, 2, 3, 4, 5, 2, 1],
-    [2, 4, 1, 0, 3, 5, 1, 2],
-    [3, 5, 1, 2, 4, 0, 3, 5],
-    [0, 2, 4, 5, 1, 3, 2, 4],
-    [1, 3, 5, 4, 2, 1, 0, 3],
-    [5, 0, 3, 1, 5, 2, 4, 0],
-    [2, 4, 0, 3, 1, 4, 5, 2],
-    [1, 2, 5, 0, 3, 2, 1, 4],
-  ];
-  state.board = board;
-  state.cursor.row = 0;
-  state.cursor.col = 0;
-  state.cursor.selected = null;
-  state.lastEvent = "Scenario loaded";
 }
 
 export function toTextRows(state) {
-  return state.board.map((row) => row.join(" "));
+  return [
+    `mode=${state.mode}`,
+    `coins=${state.coins.toFixed(3)}`,
+    `total=${state.totalCoinsEarned.toFixed(3)}`,
+    `click_power=${state.clickPower}`,
+    `idle_per_sec=${state.autoRatePerSecond.toFixed(3)}`,
+    `prestige_shards=${state.prestigeShards}`,
+    `prestige_multiplier=${state.prestigeMultiplier.toFixed(3)}`,
+    `cursor_level=${state.cursorLevel} cursor_cost=${state.cursorCost}`,
+    `factory_level=${state.factoryLevel} factory_cost=${state.factoryCost}`,
+    `elapsed_ms=${state.elapsedMs}`,
+  ];
 }
 
-export { COLS, GEM_TYPES, LEVEL_DURATION_MS, ROWS };
+export { FIXED_DT_MS };

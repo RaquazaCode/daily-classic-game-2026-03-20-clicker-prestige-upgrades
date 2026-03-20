@@ -1,0 +1,27 @@
+{
+  "mode": "paused",
+  "coins": 1.2,
+  "totalCoinsEarned": 1.2,
+  "clickPower": 1,
+  "autoRatePerSecond": 0,
+  "cursorLevel": 0,
+  "factoryLevel": 0,
+  "cursorCost": 25,
+  "factoryCost": 120,
+  "prestigeShards": 1,
+  "prestigeMultiplier": 1.2,
+  "elapsedMs": 3200,
+  "lastEvent": "Paused",
+  "rows": [
+    "mode=paused",
+    "coins=1.200",
+    "total=1.200",
+    "click_power=1",
+    "idle_per_sec=0.000",
+    "prestige_shards=1",
+    "prestige_multiplier=1.200",
+    "cursor_level=0 cursor_cost=25",
+    "factory_level=0 factory_cost=120",
+    "elapsed_ms=3200"
+  ]
+}

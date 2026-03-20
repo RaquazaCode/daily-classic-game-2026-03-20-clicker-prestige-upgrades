@@ -2,94 +2,80 @@ import assert from "node:assert/strict";
 import {
   advanceByMs,
   createGame,
-  setBoardForTesting,
-  setNearMatchScenario,
+  hardResetToTitle,
+  setScenarioForTesting,
   snapshot,
   startGame,
   stepGame,
   togglePause,
 } from "../src/game-core.js";
 
-function pulse(input, key) {
-  input[key] = true;
-  stepGame(gameRef.state, input);
-  input[key] = false;
-}
-
 const emptyInput = () => ({
-  leftPressed: false,
-  rightPressed: false,
-  upPressed: false,
-  downPressed: false,
-  selectPressed: false,
+  clickPressed: false,
+  buyCursorPressed: false,
+  buyFactoryPressed: false,
+  prestigePressed: false,
 });
 
-const gameRef = { state: null };
-
 {
-  const a = createGame(1234);
-  const b = createGame(1234);
+  const a = createGame(77);
+  const b = createGame(77);
   startGame(a);
   startGame(b);
-  assert.deepEqual(snapshot(a).board, snapshot(b).board, "same seed should yield same board");
+  advanceByMs(a, emptyInput(), 3000);
+  advanceByMs(b, emptyInput(), 3000);
+  assert.deepEqual(snapshot(a), snapshot(b), "same seed/timing should be deterministic");
 }
 
 {
-  gameRef.state = createGame(20260319);
-  startGame(gameRef.state);
-  setNearMatchScenario(gameRef.state);
-  const input = emptyInput();
-
-  pulse(input, "rightPressed");
-  pulse(input, "selectPressed");
-  pulse(input, "rightPressed");
-  pulse(input, "selectPressed");
-
-  const view = snapshot(gameRef.state);
-  assert.ok(view.score >= 180, "successful match swap should award score");
-  assert.equal(view.mode, "playing");
-}
-
-{
-  const state = createGame(99);
+  const state = createGame();
   startGame(state);
-  setBoardForTesting(state, [
-    [0, 1, 2, 3, 4, 5, 0, 1],
-    [1, 2, 3, 4, 5, 0, 1, 2],
-    [2, 3, 4, 5, 0, 1, 2, 3],
-    [3, 4, 5, 0, 1, 2, 3, 4],
-    [4, 5, 0, 1, 2, 3, 4, 5],
-    [5, 0, 1, 2, 3, 4, 5, 0],
-    [0, 1, 2, 3, 4, 5, 0, 1],
-    [1, 2, 3, 4, 5, 0, 1, 2],
-  ]);
-  state.levelTimeLeftMs = 40;
-  state.levelTargetScore = 50;
-  state.score = 80;
-  advanceByMs(state, emptyInput(), 50);
-  assert.equal(state.level, 2, "meeting target before timeout should advance timed level");
-  assert.equal(state.mode, "playing");
+  stepGame(state, { ...emptyInput(), clickPressed: true });
+  assert.equal(state.coins, 1, "click should grant base click power");
+
+  setScenarioForTesting(state, { coins: 30 });
+  stepGame(state, { ...emptyInput(), buyCursorPressed: true });
+  assert.equal(state.cursorLevel, 1, "cursor level should increase after purchase");
+  assert.equal(state.clickPower, 2, "cursor should increase click power");
 }
 
 {
-  const state = createGame(88);
+  const state = createGame();
   startGame(state);
-  state.levelTimeLeftMs = 20;
-  state.levelTargetScore = 800;
-  state.score = 100;
-  advanceByMs(state, emptyInput(), 40);
-  assert.equal(state.mode, "gameover", "missing target at timer end should end run");
+  setScenarioForTesting(state, {
+    coins: 1500,
+    totalCoinsEarned: 1500,
+    autoRatePerSecond: 2.4,
+    factoryLevel: 4,
+  });
+  stepGame(state, { ...emptyInput(), prestigePressed: true });
+  assert.equal(state.prestigeShards, 1, "prestige should award shards at 1000 total");
+  assert.equal(state.prestigeMultiplier, 1.2, "prestige multiplier should scale from shards");
+  assert.equal(state.coins, 0, "prestige should reset run coins");
+  assert.equal(state.factoryLevel, 0, "prestige should reset run upgrades");
 }
 
 {
-  const state = createGame(77);
+  const state = createGame();
   startGame(state);
+  setScenarioForTesting(state, { coins: 200, totalCoinsEarned: 200, autoRatePerSecond: 1.8 });
   togglePause(state);
   const before = snapshot(state);
-  advanceByMs(state, emptyInput(), 1000);
+  advanceByMs(state, emptyInput(), 5000);
   const after = snapshot(state);
   assert.equal(after.mode, "paused");
-  assert.equal(before.levelTimeLeftMs, after.levelTimeLeftMs, "pause should freeze timer");
+  assert.equal(after.coins, before.coins, "pause should freeze passive gain");
+  assert.equal(after.elapsedMs, before.elapsedMs, "pause should freeze elapsed time");
+}
+
+{
+  const state = createGame();
+  startGame(state);
+  setScenarioForTesting(state, { prestigeShards: 3, prestigeMultiplier: 1.6, coins: 500 });
+  hardResetToTitle(state);
+  assert.equal(state.mode, "title");
+  assert.equal(state.prestigeShards, 0, "hard reset should wipe prestige meta");
+  assert.equal(state.coins, 0);
 }
 
 console.log("game-core tests passed");

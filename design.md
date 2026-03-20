@@ -1,35 +1,27 @@
-# Design - Match-3 Timed Levels
+# Design - Clicker Prestige Upgrades
 
 ## Goal
-Build a deterministic match-3 MVP suitable for unattended automation runs while keeping gameplay readable and replayable.
+Deliver a deterministic clicker/idle MVP that can run unattended and be verified with scripted browser checks.
 
 ## Core Loop
-1. Player moves cursor over 8x8 grid.
-2. Player selects two adjacent gems to attempt swap.
-3. Engine validates swap, resolves matches, cascades, gravity, and refill.
-4. Score updates deterministically.
-5. Timed level countdown checks target threshold.
+1. Player starts run from title.
+2. Active clicks and passive ticks generate coins.
+3. Coins buy two upgrade lanes: click power and idle factories.
+4. Once enough total run value is produced, player can trigger prestige.
+5. Prestige resets run-level values but increases permanent multiplier through shards.
 
-## Determinism
-- Seeded PRNG controls initial board generation and all refill gems.
-- Fixed-step update loop (`100ms`) drives timer and simulation.
-- `window.advanceTime(ms)` advances simulation by deterministic steps.
-- `window.render_game_to_text()` emits structured board/state snapshots.
+## Determinism Strategy
+- Fixed simulation tick (`100ms`) in core logic.
+- No runtime randomness in economy calculations.
+- `window.advanceTime(ms)` drives deterministic progression for automation.
+- `window.render_game_to_text()` exposes a structured state snapshot.
+- Extra deterministic helper `window.__runDeterministicVerification()` proves prestige progression without pointer dependency.
 
-## Timed-Level Twist
-- Each level runs on a 30-second timer.
-- Each level has a score target (`600 + 450*(level-1)`).
-- Timer expiry with target met advances level.
-- Timer expiry without target ends run (`gameover`).
+## Input + UX
+- Keyboard-first controls (`Enter`, `C`, `F`, `K`, `P`, `R`) with matching click targets.
+- HUD exposes costs, levels, multiplier, and event feedback.
+- Overlay states for title and pause ensure readable automation screenshots.
 
-## Input + Runtime Controls
-- Arrows: cursor motion
-- Space/Enter: select & swap
-- Enter on overlays: restart run
-- P: pause/resume
-- R: reset to title
-
-## Verification Strategy
-- Unit tests verify deterministic seeding, swap scoring, timed-level progression, timeout game over, and pause timer freeze.
-- Playwright capture verifies title/live/paused screenshots and deterministic cascade score path.
-- Action payload JSONs follow `web_game_playwright_client` schema.
+## Validation
+- Unit tests cover deterministic equivalence, purchase effects, prestige resets, pause freeze, and hard reset behavior.
+- Playwright capture script stores screenshot + action payload artifacts using the required schema.
